@@ -1,5 +1,5 @@
 -- =======================================================
--- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v5)
+-- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v3)
 -- Domain: spectz.lol
 -- =======================================================
 
@@ -10,6 +10,7 @@ local Lighting        = game:GetService("Lighting")
 local Players         = game:GetService("Players")
 local HttpService     = game:GetService("HttpService")
 local CoreGui         = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -24,8 +25,7 @@ local CONFIG = {
     RAINBOW_SPEED = 0.3,
     CURRENT_FONT = Enum.Font.SourceSansBold,
     IS_AUTHENTICATED = false,
-    SETTING_FILE = "SpectzHub_Settings_v5.json",
-    DISCORD_LINK = "https://discord.gg/APjEkMhBZW"
+    SETTING_FILE = "SpectzHub_Settings_v3.json"
 }
 
 -- Global Mod States
@@ -44,12 +44,9 @@ _G.SpinbotEnabled = false
 _G.SpinSpeed = 50
 _G.GodMode = false
 _G.BtoolsEnabled = false
+_G.CrashGunActive = false
 _G.KickGunActive = false
 _G.InfiniteYieldActive = false
-
--- Mini-Game State
-_G.CoinGameActive = false
-_G.CoinScore = 0
 
 local Themes = {
     TerminalGreen = {
@@ -92,7 +89,7 @@ local currentHue = 0
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpectzHubOmniMasterV5"
+ScreenGui.Name = "SpectzHubOmniMasterV3"
 ScreenGui.ResetOnSpawn = false
 local success = pcall(function() ScreenGui.Parent = CoreGui end)
 if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
@@ -587,18 +584,16 @@ function UI:CreateTab(name)
     return Elements
 end
 
--- FOV Circle Safe Setup
+-- FOV Circle
 local FOVCircle
 if Drawing then
-    pcall(function()
-        FOVCircle = Drawing.new("Circle")
-        FOVCircle.Color = Color3.fromRGB(0, 255, 128)
-        FOVCircle.Thickness = 1
-        FOVCircle.NumSides = 64
-        FOVCircle.Radius = _G.FOVSize
-        FOVCircle.Filled = false
-        FOVCircle.Visible = false
-    end)
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Color = Color3.fromRGB(0, 255, 128)
+    FOVCircle.Thickness = 1
+    FOVCircle.NumSides = 64
+    FOVCircle.Radius = _G.FOVSize
+    FOVCircle.Filled = false
+    FOVCircle.Visible = false
 end
 
 local function GetClosestPlayer()
@@ -703,62 +698,8 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =======================================================
--- POPULATE TABS & ALL FEATURES (WITH HOME & MINI-GAME!)
+-- POPULATE TABS & ALL FEATURES
 -- =======================================================
-
--- 0. HOME PAGE
-local HomeTab = UI:CreateTab("Home")
-do
-    local HomeScroll = UI.Tabs[#UI.Tabs].Scroll
-    
-    local CenterContainer = Instance.new("Frame", HomeScroll)
-    CenterContainer.Size = UDim2.new(0.98, 0, 0, 240)
-    CenterContainer.BackgroundColor3 = CurrentTheme.ContainerBG
-    CenterContainer.Position = UDim2.new(0, 0, 0, 10)
-    Instance.new("UICorner", CenterContainer).CornerRadius = UDim.new(0, 12)
-    
-    local HomeLogo = Instance.new("TextLabel", CenterContainer)
-    HomeLogo.Size = UDim2.new(1, 0, 0, 60)
-    HomeLogo.Position = UDim2.new(0, 0, 0.25, -30)
-    HomeLogo.BackgroundTransparency = 1
-    HomeLogo.Text = "Spectz.lol"
-    HomeLogo.TextColor3 = CurrentTheme.Accent
-    HomeLogo.TextSize = 36
-    RegisterText(HomeLogo)
-    
-    local HomeSub = Instance.new("TextLabel", CenterContainer)
-    HomeSub.Size = UDim2.new(1, 0, 0, 30)
-    HomeSub.Position = UDim2.new(0, 0, 0.5, 0)
-    HomeSub.BackgroundTransparency = 1
-    HomeSub.Text = "Ultimate Omni-Master Edition"
-    HomeSub.TextColor3 = CurrentTheme.Text
-    HomeSub.TextSize = 14
-    RegisterText(HomeSub)
-    
-    local DiscordBtn = Instance.new("TextButton", CenterContainer)
-    DiscordBtn.Size = UDim2.new(0.85, 0, 0, 42)
-    DiscordBtn.Position = UDim2.new(0.075, 0, 0.72, 0)
-    DiscordBtn.BackgroundColor3 = CurrentTheme.HeaderBG
-    DiscordBtn.Text = "JOIN DISCORD SERVER"
-    DiscordBtn.TextColor3 = CurrentTheme.Accent
-    DiscordBtn.TextSize = 13
-    Instance.new("UICorner", DiscordBtn).CornerRadius = UDim.new(0, 8)
-    RegisterText(DiscordBtn)
-    
-    local BtnStroke = Instance.new("UIStroke", DiscordBtn)
-    BtnStroke.Color = CurrentTheme.Border
-    BtnStroke.Thickness = 1.5
-    RegisterDynamic(BtnStroke)
-    
-    DiscordBtn.MouseButton1Click:Connect(function()
-        if setclipboard then
-            setclipboard(CONFIG.DISCORD_LINK)
-            Notify("HOME", "Discord invite link copied to clipboard!")
-        else
-            Notify("ERROR", "Clipboard not supported")
-        end
-    end)
-end
 
 -- 1. COMBAT
 local CombatTab = UI:CreateTab("Combat")
@@ -893,84 +834,7 @@ WorldTab:AddButton("Clear Unanchored Parts", function()
     Notify("WORLD", "Cleared " .. count .. " unanchored parts")
 end)
 
--- 5. MINI-GAME (Coin Clicker / Mini-Game inside the Hub!)
-local MiniGameTab = UI:CreateTab("Mini-Game")
-MiniGameTab:AddToggle("Open Coin Clicker Game", false, function(state)
-    _G.CoinGameActive = state
-    if state then
-        local GameFrame = Instance.new("Frame", MainFrame)
-        GameFrame.Name = "MiniGameContainer"
-        GameFrame.Size = UDim2.new(0, 220, 0, 260)
-        GameFrame.Position = UDim2.new(1, -230, 0, 44)
-        GameFrame.BackgroundColor3 = CurrentTheme.ContainerBG
-        Instance.new("UICorner", GameFrame).CornerRadius = UDim.new(0, 12)
-        local stroke = Instance.new("UIStroke", GameFrame)
-        stroke.Color = CurrentTheme.Border
-        stroke.Thickness = 2
-        RegisterDynamic(stroke)
-
-        local Title = Instance.new("TextLabel", GameFrame)
-        Title.Size = UDim2.new(1, 0, 0, 30)
-        Title.BackgroundTransparency = 1
-        Title.Text = "COIN CLICKER"
-        Title.TextColor3 = CurrentTheme.Accent
-        Title.TextSize = 14
-        RegisterText(Title)
-
-        local ScoreLbl = Instance.new("TextLabel", GameFrame)
-        ScoreLbl.Size = UDim2.new(1, 0, 0, 30)
-        ScoreLbl.Position = UDim2.new(0, 0, 0, 30)
-        ScoreLbl.BackgroundTransparency = 1
-        ScoreLbl.Text = "Score: 0"
-        ScoreLbl.TextColor3 = CurrentTheme.Text
-        ScoreLbl.TextSize = 16
-        RegisterText(ScoreLbl)
-
-        local ClickBtn = Instance.new("TextButton", GameFrame)
-        ClickBtn.Size = UDim2.new(0.8, 0, 0, 90)
-        ClickBtn.Position = UDim2.new(0.1, 0, 0.4, 0)
-        ClickBtn.BackgroundColor3 = CurrentTheme.HeaderBG
-        ClickBtn.Text = "CLICK ME!"
-        ClickBtn.TextColor3 = CurrentTheme.Accent
-        ClickBtn.TextSize = 18
-        Instance.new("UICorner", ClickBtn).CornerRadius = UDim.new(0, 12)
-        RegisterText(ClickBtn)
-
-        local CloseGame = Instance.new("TextButton", GameFrame)
-        CloseGame.Size = UDim2.new(0.8, 0, 0, 30)
-        CloseGame.Position = UDim2.new(0.1, 0, 0.8, 0)
-        CloseGame.BackgroundColor3 = CurrentTheme.HeaderBG
-        CloseGame.Text = "Close Game"
-        CloseGame.TextColor3 = Color3.fromRGB(255, 75, 75)
-        CloseGame.TextSize = 12
-        Instance.new("UICorner", CloseGame).CornerRadius = UDim.new(0, 8)
-        RegisterText(CloseGame)
-
-        ClickBtn.MouseButton1Click:Connect(function()
-            _G.CoinScore = _G.CoinScore + 1
-            ScoreLbl.Text = "Score: " .. tostring(_G.CoinScore)
-            TweenService:Create(ClickBtn, TweenInfo.new(0.05), {Size = UDim2.new(0.75, 0, 0, 80)}):Play()
-            task.delay(0.05, function()
-                if ClickBtn and ClickBtn.Parent then
-                    TweenService:Create(ClickBtn, TweenInfo.new(0.05), {Size = UDim2.new(0.8, 0, 0, 90)}):Play()
-                end
-            end)
-        end)
-
-        CloseGame.MouseButton1Click:Connect(function()
-            _G.CoinGameActive = false
-            GameFrame:Destroy()
-        end)
-        
-        Notify("MINI-GAME", "Coin Clicker Game opened!")
-    else
-        if MainFrame:FindFirstChild("MiniGameContainer") then
-            MainFrame.MiniGameContainer:Destroy()
-        end
-    end
-end)
-
--- 6. TROLL / EXPLOIT (Kick Gun)
+-- 5. TROLL / EXPLOIT (Kick Gun & Crash Gun added here!)
 local TrollTab = UI:CreateTab("Troll / Fun")
 TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state)
     _G.KickGunActive = state
@@ -988,6 +852,7 @@ TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state
                 local player = Players:GetPlayerFromCharacter(character)
                 if player and player ~= LocalPlayer then
                     pcall(function()
+                        -- Kick mechanism via infinite loop or state breaking
                         player.Character:BreakJoints()
                     end)
                     Notify("TROLL", "Kicked / Terminated " .. player.Name)
@@ -996,6 +861,38 @@ TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state
         end)
         tool.Parent = LocalPlayer.Backpack
         Notify("TROLL", "Kick Gun added to inventory!")
+    end
+end)
+
+TrollTab:AddToggle("Crash Gun (Equip tool & click player)", false, function(state)
+    _G.CrashGunActive = state
+    if state then
+        local tool = Instance.new("Tool")
+        tool.Name = "Spectz_CrashGun"
+        tool.RequiresHandle = true
+        local handle = Instance.new("Part", tool)
+        handle.Name = "Handle"
+        handle.Size = Vector3.new(1, 1, 4)
+        handle.BrickColor = BrickColor.new("Cyan")
+        tool.Activated:Connect(function()
+            if Mouse.Target and Mouse.Target.Parent then
+                local character = Mouse.Target.Parent
+                local player = Players:GetPlayerFromCharacter(character)
+                if player and player ~= LocalPlayer then
+                    task.spawn(function()
+                        for i = 1, 1500 do
+                            pcall(function()
+                                local p = Instance.new("Part", workspace)
+                                p.Position = player.Character.HumanoidRootPart.Position
+                            end)
+                        end
+                    end)
+                    Notify("TROLL", "Crash Gun fired at " .. player.Name)
+                end
+            end
+        end)
+        tool.Parent = LocalPlayer.Backpack
+        Notify("TROLL", "Crash Gun added to inventory!")
     end
 end)
 
@@ -1027,7 +924,7 @@ TrollTab:AddButton("Fling Random Player", function()
     end
 end)
 
--- 7. SERVER / ADMIN
+-- 6. SERVER / ADMIN
 local ServerTab = UI:CreateTab("Server / Admin")
 ServerTab:AddButton("Execute Infinite Yield", function()
     pcall(function()
@@ -1080,7 +977,7 @@ ServerTab:AddButton("Server Hop (Find New Server)", function()
     end)
 end)
 
--- 8. FONTS
+-- 7. FONTS
 local FontsTab = UI:CreateTab("Fonts")
 FontsTab:AddButton("Source Sans Bold (Default)", function() SetGlobalFont(Enum.Font.SourceSansBold) Notify("FONTS", "Applied Source Sans Bold") end)
 FontsTab:AddButton("Code / Monospace", function() SetGlobalFont(Enum.Font.Code) Notify("FONTS", "Applied Code Font") end)
@@ -1089,7 +986,7 @@ FontsTab:AddButton("Gothic / Medieval", function() SetGlobalFont(Enum.Font.Gothi
 FontsTab:AddButton("SciFi / Futuristic", function() SetGlobalFont(Enum.Font.SciFi) Notify("FONTS", "Applied SciFi Font") end)
 FontsTab:AddButton("Fredoka One / Rounded", function() SetGlobalFont(Enum.Font.FredokaOne) Notify("FONTS", "Applied Fredoka One") end)
 
--- 9. TELEPORTS
+-- 8. TELEPORTS
 local TeleportTab = UI:CreateTab("Teleports")
 TeleportTab:AddButton("Teleport to Spawn", function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -1116,7 +1013,7 @@ TeleportTab:AddButton("Teleport to Random Player", function()
     end
 end)
 
--- 10. THEMES
+-- 9. THEMES
 local ThemesTab = UI:CreateTab("Themes")
 ThemesTab:AddToggle("Rainbow Dynamic Style", CONFIG.RAINBOW_ENABLED, function(state)
     CONFIG.RAINBOW_ENABLED = state
@@ -1143,7 +1040,7 @@ ThemesTab:AddButton("Preset: Deep Crimson", function()
     Notify("THEMES", "Applied Deep Crimson")
 end)
 
--- 11. SETTINGS
+-- 10. SETTINGS
 local SettingsTab = UI:CreateTab("Settings")
 SettingsTab:AddKeybind("Toggle UI Keybind", CONFIG.TOGGLE_KEY, function(key)
     CONFIG.TOGGLE_KEY = key
