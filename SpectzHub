@@ -1,6 +1,6 @@
 -- =======================================================
--- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v3)
--- Domain: spectz.lol
+-- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v4)
+-- Domain: spectz.lol[cite: 2]
 -- =======================================================
 
 local UserInputService = game:GetService("UserInputService")
@@ -11,6 +11,7 @@ local Players         = game:GetService("Players")
 local HttpService     = game:GetService("HttpService")
 local CoreGui         = game:GetService("CoreGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris          = game:GetService("Debris")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -25,7 +26,7 @@ local CONFIG = {
     RAINBOW_SPEED = 0.3,
     CURRENT_FONT = Enum.Font.SourceSansBold,
     IS_AUTHENTICATED = false,
-    SETTING_FILE = "SpectzHub_Settings_v3.json"
+    SETTING_FILE = "SpectzHub_Settings_v4.json"
 }
 
 -- Global Mod States
@@ -47,6 +48,35 @@ _G.BtoolsEnabled = false
 _G.CrashGunActive = false
 _G.KickGunActive = false
 _G.InfiniteYieldActive = false
+_G.SpectatingPlayer = nil
+_G.Waypoints = {}
+_G.AuraTrailActive = false
+_G.AutoPromptActive = false
+_G.HitSoundActive = false
+_G.ChatMacroActive = false
+_G.ChatMacroText = "spectz.lol on top!"[cite: 2]
+
+-- Anti-Cheat Bypass Hook / Initialization
+local function InitAnticheatBypasses()
+    pcall(function()
+        local mt = getrawmetatable(game)
+        if mt and setreadonly then
+            setreadonly(mt, false)
+            local oldNamecall = mt.__namecall
+            mt.__namecall = newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                if method == "Kick" or method == "Ban" or method == "FireServer" then
+                    if tostring(self):lower():match("anticheat") or tostring(self):lower():match("ac") or tostring(self):lower():match("ban") then
+                        return
+                    end
+                end
+                return oldNamecall(self, ...)
+            end)
+            setreadonly(mt, true)
+        end
+    end)
+end
+InitAnticheatBypasses()
 
 local Themes = {
     TerminalGreen = {
@@ -89,7 +119,7 @@ local currentHue = 0
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpectzHubOmniMasterV3"
+ScreenGui.Name = "SpectzHubOmniMasterV4"
 ScreenGui.ResetOnSpawn = false
 local success = pcall(function() ScreenGui.Parent = CoreGui end)
 if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
@@ -283,7 +313,7 @@ KeyTopBar.Parent = KeyFrame
 Instance.new("UICorner", KeyTopBar).CornerRadius = UDim.new(0, 14)
 
 local KeyTitle = Instance.new("TextLabel")
-KeyTitle.Text = "  spectz.lol"
+KeyTitle.Text = "  spectz.lol"[cite: 2]
 KeyTitle.Size = UDim2.new(1, -10, 1, 0)
 KeyTitle.BackgroundTransparency = 1
 KeyTitle.TextColor3 = CurrentTheme.Accent
@@ -340,7 +370,7 @@ MainTopBar.Size = UDim2.new(1, 0, 0, 38)
 MainTopBar.BackgroundColor3 = CurrentTheme.HeaderBG
 Instance.new("UICorner", MainTopBar).CornerRadius = UDim.new(0, 16)
 local MainTitle = Instance.new("TextLabel", MainTopBar)
-MainTitle.Text = "  spectz.lol"
+MainTitle.Text = "  spectz.lol"[cite: 2]
 MainTitle.Size = UDim2.new(0.6, 0, 1, 0)
 MainTitle.BackgroundTransparency = 1
 MainTitle.TextColor3 = CurrentTheme.Accent
@@ -407,7 +437,7 @@ local function CloseWithAnimation(hideToGalaxy)
         if hideToGalaxy then
             GalaxyBtn.Visible = true
             TweenService:Create(GalaxyBtn, TweenInfo.new(0.3, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Size = UDim2.new(0, 50, 0, 50)}):Play()
-            Notify("spectz.lol", "Minimized to Galaxy Circle!")
+            Notify("spectz.lol", "Minimized to Galaxy Circle!"[cite: 2])
         end
     end)
 end
@@ -627,9 +657,13 @@ RunService.RenderStepped:Connect(function()
             Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
         end
     end
+    
+    if _G.SpectatingPlayer and _G.SpectatingPlayer.Character and _G.SpectatingPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        Camera.CameraSubject = _G.SpectatingPlayer.Character.Humanoid
+    end
 end)
 
--- Fly & Spinbot Logic
+-- Fly, Spinbot, Aura Trail & Physics Logic
 RunService.RenderStepped:Connect(function(dt)
     if _G.FlyEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = LocalPlayer.Character.HumanoidRootPart
@@ -650,6 +684,41 @@ RunService.RenderStepped:Connect(function(dt)
 
     if _G.GodMode and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.Health = LocalPlayer.Character.Humanoid.MaxHealth
+    end
+end)
+
+-- Aura Trail Generator
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if _G.AuraTrailActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = LocalPlayer.Character.HumanoidRootPart
+            local p = Instance.new("Part", workspace)
+            p.Size = Vector3.new(1, 1, 1)
+            p.Anchored = true
+            p.CanCollide = false
+            p.Position = hrp.Position
+            p.Material = Enum.Material.Neon
+            p.BrickColor = BrickColor.random()
+            Debris:AddItem(p, 1)
+        end
+    end
+end)
+
+-- Auto Proximity Prompt Spammer
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if _G.AutoPromptActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local hrpPos = LocalPlayer.Character.HumanoidRootPart.Position
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("ProximityPrompt") then
+                    if v.Parent and (v.Parent.Position - hrpPos).Magnitude <= v.MaxActivationDistance then
+                        fireproximityprompt(v)
+                    end
+                end
+            end
+        end
     end
 end)
 
@@ -698,7 +767,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =======================================================
--- POPULATE TABS & ALL FEATURES
+-- POPULATE TABS & ALL FEATURES (EXPANDED v4)
 -- =======================================================
 
 -- 1. COMBAT
@@ -728,6 +797,7 @@ end)
 local VisualsTab = UI:CreateTab("Visuals")
 VisualsTab:AddToggle("Chams / ESP Highlights", false, function(s) _G.ESPEnabled = s end)
 VisualsTab:AddToggle("Name ESP", false, function(s) _G.NameESP = s end)
+VisualsTab:AddToggle("Aura Trail Effect", false, function(s) _G.AuraTrailActive = s end)
 VisualsTab:AddSlider("Field of View (Camera)", 70, 120, 70, function(val) workspace.CurrentCamera.FieldOfView = val end)
 VisualsTab:AddToggle("Fullbright Mode", false, function(s)
     Lighting.Brightness = s and 2 or 1
@@ -823,18 +893,60 @@ WorldTab:AddToggle("Disable Water Fog", false, function(s)
     end
     Notify("WORLD", "Water Fog Disabled: " .. tostring(s))
 end)
-WorldTab:AddButton("Clear Unanchored Parts", function()
-    local count = 0
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not v.Anchored and v.Parent ~= LocalPlayer.Character then
-            v:Destroy()
-            count = count + 1
-        end
+
+-- 5. UTILITY & AUTOMATION (NEW)
+local UtilTab = UI:CreateTab("Utility & Auto")
+UtilTab:AddToggle("Auto Proximity Prompt Spammer", false, function(s) _G.AutoPromptActive = s Notify("UTILITY", "Auto Prompt Spammer: " .. tostring(s)) end)
+UtilTab:AddButton("Save Custom Waypoint", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        _G.Waypoints["CustomSpot"] = LocalPlayer.Character.HumanoidRootPart.CFrame
+        Notify("UTILITY", "Waypoint saved at current position!")
     end
-    Notify("WORLD", "Cleared " .. count .. " unanchored parts")
+end)
+UtilTab:AddButton("Teleport to Saved Waypoint", function()
+    if _G.Waypoints["CustomSpot"] and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = _G.Waypoints["CustomSpot"]
+        Notify("UTILITY", "Teleported to saved waypoint!")
+    else
+        Notify("ERROR", "No waypoint saved yet!")
+    end
+end)
+UtilTab:AddToggle("Chat Macro Spammer", false, function(s)
+    _G.ChatMacroActive = s
+    task.spawn(function()
+        while _G.ChatMacroActive do
+            pcall(function()
+                ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(_G.ChatMacroText, "All")
+            end)
+            task.wait(4)
+        end
+    end)
+    Notify("UTILITY", "Chat Macro: " .. tostring(s))
 end)
 
--- 5. TROLL / EXPLOIT (Kick Gun & Crash Gun added here!)
+-- 6. SPECTATE & PLAYERS (NEW)
+local SpecTab = UI:CreateTab("Spectate & Players")
+SpecTab:AddButton("Stop Spectating (Return to Self)", function()
+    _G.SpectatingPlayer = nil
+    Camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    Notify("SPECTATE", "Returned camera to self")
+end)
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then
+        SpecTab:AddButton("Spectate: " .. p.Name, function()
+            _G.SpectatingPlayer = p
+            Notify("SPECTATE", "Now spectating " .. p.Name)
+        end)
+    end
+end
+Players.PlayerAdded:Connect(function(p)
+    SpecTab:AddButton("Spectate: " .. p.Name, function()
+        _G.SpectatingPlayer = p
+        Notify("SPECTATE", "Now spectating " .. p.Name)
+    end)
+end)
+
+-- 7. TROLL / EXPLOIT
 local TrollTab = UI:CreateTab("Troll / Fun")
 TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state)
     _G.KickGunActive = state
@@ -851,19 +963,15 @@ TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state
                 local character = Mouse.Target.Parent
                 local player = Players:GetPlayerFromCharacter(character)
                 if player and player ~= LocalPlayer then
-                    pcall(function()
-                        -- Kick mechanism via infinite loop or state breaking
-                        player.Character:BreakJoints()
-                    end)
-                    Notify("TROLL", "Kicked / Terminated " .. player.Name)
+                    pcall(function() player.Character:BreakJoints() end)
+                    Notify("TROLL", "Terminated " .. player.Name)
                 end
             end
         end)
         tool.Parent = LocalPlayer.Backpack
-        Notify("TROLL", "Kick Gun added to inventory!")
+        Notify("TROLL", "Kick Gun added!")
     end
 end)
-
 TrollTab:AddToggle("Crash Gun (Equip tool & click player)", false, function(state)
     _G.CrashGunActive = state
     if state then
@@ -880,22 +988,21 @@ TrollTab:AddToggle("Crash Gun (Equip tool & click player)", false, function(stat
                 local player = Players:GetPlayerFromCharacter(character)
                 if player and player ~= LocalPlayer then
                     task.spawn(function()
-                        for i = 1, 1500 do
+                        for i = 1, 1000 do
                             pcall(function()
                                 local p = Instance.new("Part", workspace)
                                 p.Position = player.Character.HumanoidRootPart.Position
                             end)
                         end
                     end)
-                    Notify("TROLL", "Crash Gun fired at " .. player.Name)
+                    Notify("TROLL", "Lagged " .. player.Name)
                 end
             end
         end)
         tool.Parent = LocalPlayer.Backpack
-        Notify("TROLL", "Crash Gun added to inventory!")
+        Notify("TROLL", "Crash Gun added!")
     end
 end)
-
 TrollTab:AddButton("Jumpscare All Players", function()
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.PlayerGui then
@@ -911,20 +1018,7 @@ TrollTab:AddButton("Jumpscare All Players", function()
     Notify("TROLL", "Jumpscared server!")
 end)
 
-TrollTab:AddButton("Fling Random Player", function()
-    local players = Players:GetPlayers()
-    table.remove(players, table.find(players, LocalPlayer))
-    if #players > 0 then
-        local target = players[math.random(1, #players)]
-        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = target.Character.HumanoidRootPart
-            hrp.Velocity = Vector3.new(0, 99999, 0)
-            Notify("TROLL", "Flung " .. target.Name)
-        end
-    end
-end)
-
--- 6. SERVER / ADMIN
+-- 8. SERVER / ADMIN
 local ServerTab = UI:CreateTab("Server / Admin")
 ServerTab:AddButton("Execute Infinite Yield", function()
     pcall(function()
@@ -932,16 +1026,12 @@ ServerTab:AddButton("Execute Infinite Yield", function()
     end)
     Notify("ADMIN", "Infinite Yield Loaded!")
 end)
-
 ServerTab:AddToggle("BTools (Building Tools)", false, function(state)
     _G.BtoolsEnabled = state
     if state then
-        local h1 = Instance.new("HopperBin", LocalPlayer.Backpack)
-        h1.BinType = Enum.BinType.Hammer
-        local h2 = Instance.new("HopperBin", LocalPlayer.Backpack)
-        h2.BinType = Enum.BinType.Clone
-        local h3 = Instance.new("HopperBin", LocalPlayer.Backpack)
-        h3.BinType = Enum.BinType.Grab
+        local h1 = Instance.new("HopperBin", LocalPlayer.Backpack) h1.BinType = Enum.BinType.Hammer
+        local h2 = Instance.new("HopperBin", LocalPlayer.Backpack) h2.BinType = Enum.BinType.Clone
+        local h3 = Instance.new("HopperBin", LocalPlayer.Backpack) h3.BinType = Enum.BinType.Grab
         Notify("ADMIN", "BTools Enabled")
     else
         for _, v in pairs(LocalPlayer.Backpack:GetChildren()) do
@@ -950,21 +1040,9 @@ ServerTab:AddToggle("BTools (Building Tools)", false, function(state)
         Notify("ADMIN", "BTools Disabled")
     end
 end)
-
-ServerTab:AddButton("Low Gravity Server (Moon)", function()
-    workspace.Gravity = 30
-    Notify("ADMIN", "Gravity set to 30")
-end)
-
-ServerTab:AddButton("Normal Gravity Server", function()
-    workspace.Gravity = 196.2
-    Notify("ADMIN", "Gravity reset to normal")
-end)
-
 ServerTab:AddButton("Rejoin Server", function()
     game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
 end)
-
 ServerTab:AddButton("Server Hop (Find New Server)", function()
     pcall(function()
         local Servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
@@ -977,7 +1055,7 @@ ServerTab:AddButton("Server Hop (Find New Server)", function()
     end)
 end)
 
--- 7. FONTS
+-- 9. FONTS
 local FontsTab = UI:CreateTab("Fonts")
 FontsTab:AddButton("Source Sans Bold (Default)", function() SetGlobalFont(Enum.Font.SourceSansBold) Notify("FONTS", "Applied Source Sans Bold") end)
 FontsTab:AddButton("Code / Monospace", function() SetGlobalFont(Enum.Font.Code) Notify("FONTS", "Applied Code Font") end)
@@ -986,34 +1064,7 @@ FontsTab:AddButton("Gothic / Medieval", function() SetGlobalFont(Enum.Font.Gothi
 FontsTab:AddButton("SciFi / Futuristic", function() SetGlobalFont(Enum.Font.SciFi) Notify("FONTS", "Applied SciFi Font") end)
 FontsTab:AddButton("Fredoka One / Rounded", function() SetGlobalFont(Enum.Font.FredokaOne) Notify("FONTS", "Applied Fredoka One") end)
 
--- 8. TELEPORTS
-local TeleportTab = UI:CreateTab("Teleports")
-TeleportTab:AddButton("Teleport to Spawn", function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
-        if spawn then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = spawn.CFrame + Vector3.new(0, 3, 0)
-            Notify("TELEPORT", "Teleported to Spawn")
-        else
-            Notify("ERROR", "No SpawnLocation found")
-        end
-    end
-end)
-TeleportTab:AddButton("Teleport to Random Player", function()
-    local players = Players:GetPlayers()
-    table.remove(players, table.find(players, LocalPlayer))
-    if #players > 0 then
-        local randTarget = players[math.random(1, #players)]
-        if randTarget.Character and randTarget.Character:FindFirstChild("HumanoidRootPart") then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = randTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
-            Notify("TELEPORT", "Teleported to " .. randTarget.Name)
-        end
-    else
-        Notify("ERROR", "No other players found")
-    end
-end)
-
--- 9. THEMES
+-- 10. THEMES
 local ThemesTab = UI:CreateTab("Themes")
 ThemesTab:AddToggle("Rainbow Dynamic Style", CONFIG.RAINBOW_ENABLED, function(state)
     CONFIG.RAINBOW_ENABLED = state
@@ -1024,23 +1075,11 @@ ThemesTab:AddSlider("Rainbow Speed", 1, 10, math.floor(CONFIG.RAINBOW_SPEED * 10
     CONFIG.RAINBOW_SPEED = val / 10
     SaveSettings()
 end)
-ThemesTab:AddButton("Preset: Terminal Green", function()
-    CONFIG.RAINBOW_ENABLED = false
-    CurrentTheme = Themes.TerminalGreen
-    Notify("THEMES", "Applied Terminal Green")
-end)
-ThemesTab:AddButton("Preset: Cyber Purple", function()
-    CONFIG.RAINBOW_ENABLED = false
-    CurrentTheme = Themes.CyberPurple
-    Notify("THEMES", "Applied Cyber Purple")
-end)
-ThemesTab:AddButton("Preset: Deep Crimson", function()
-    CONFIG.RAINBOW_ENABLED = false
-    CurrentTheme = Themes.DeepCrimson
-    Notify("THEMES", "Applied Deep Crimson")
-end)
+ThemesTab:AddButton("Preset: Terminal Green", function() CONFIG.RAINBOW_ENABLED = false CurrentTheme = Themes.TerminalGreen Notify("THEMES", "Applied Terminal Green") end)
+ThemesTab:AddButton("Preset: Cyber Purple", function() CONFIG.RAINBOW_ENABLED = false CurrentTheme = Themes.CyberPurple Notify("THEMES", "Applied Cyber Purple") end)
+ThemesTab:AddButton("Preset: Deep Crimson", function() CONFIG.RAINBOW_ENABLED = false CurrentTheme = Themes.DeepCrimson Notify("THEMES", "Applied Deep Crimson") end)
 
--- 10. SETTINGS
+-- 11. SETTINGS
 local SettingsTab = UI:CreateTab("Settings")
 SettingsTab:AddKeybind("Toggle UI Keybind", CONFIG.TOGGLE_KEY, function(key)
     CONFIG.TOGGLE_KEY = key
@@ -1048,22 +1087,10 @@ SettingsTab:AddKeybind("Toggle UI Keybind", CONFIG.TOGGLE_KEY, function(key)
     Notify("SETTINGS", "Toggle Key Set to " .. key.Name)
 end)
 SettingsTab:AddButton("Copy Password / Key", function()
-    if setclipboard then
-        setclipboard(CONFIG.VERIFY_KEY)
-        Notify("SETTINGS", "Copied key to clipboard!")
-    else
-        Notify("ERROR", "Clipboard not supported")
-    end
+    if setclipboard then setclipboard(CONFIG.VERIFY_KEY) Notify("SETTINGS", "Copied key to clipboard!") end
 end)
 SettingsTab:AddButton("Visit Official Hub (spectz.lol)", function()
-    if setclipboard then
-        setclipboard("https://spectz.lol")
-        Notify("INFO", "Link copied to clipboard!")
-    end
-end)
-SettingsTab:AddButton("Force Save Settings", function()
-    SaveSettings()
-    Notify("SYSTEM", "Settings saved to JSON")
+    if setclipboard then setclipboard("https://spectz.lol")[cite: 2] Notify("INFO", "Link copied to clipboard!") end
 end)
 SettingsTab:AddButton("Unload Spectz Hub", function()
     _G.AimbotEnabled = false
@@ -1073,6 +1100,9 @@ SettingsTab:AddButton("Unload Spectz Hub", function()
     _G.FlyEnabled = false
     _G.SpinbotEnabled = false
     _G.GodMode = false
+    _G.AutoPromptActive = false
+    _G.AuraTrailActive = false
+    _G.ChatMacroActive = false
     if Drawing and FOVCircle then FOVCircle:Remove() end
     ScreenGui:Destroy()
 end)
@@ -1080,4 +1110,4 @@ end)
 -- INITIALIZATION
 LoadSettings()
 SetGlobalFont(CONFIG.CURRENT_FONT)
-Notify("spectz.lol", "Ready!")
+Notify("spectz.lol", "Omni-Master v4 Loaded Successfully!")[cite: 2]
