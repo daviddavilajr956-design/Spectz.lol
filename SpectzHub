@@ -1,4 +1,7 @@
-
+-- =======================================================
+-- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v3)
+-- Domain: spectz.lol
+-- =======================================================
 
 local UserInputService = game:GetService("UserInputService")
 local TweenService    = game:GetService("TweenService")
@@ -7,6 +10,7 @@ local Lighting        = game:GetService("Lighting")
 local Players         = game:GetService("Players")
 local HttpService     = game:GetService("HttpService")
 local CoreGui         = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -19,9 +23,9 @@ local CONFIG = {
     CLICK_TP_KEY = Enum.KeyCode.LeftControl,
     RAINBOW_ENABLED = false,
     RAINBOW_SPEED = 0.3,
-    CURRENT_FONT = Enum.Font.SourceSansBold, -- Default bold font for everything
+    CURRENT_FONT = Enum.Font.SourceSansBold,
     IS_AUTHENTICATED = false,
-    SETTING_FILE = "SpectzHub_Settings_v2.json"
+    SETTING_FILE = "SpectzHub_Settings_v3.json"
 }
 
 -- Global Mod States
@@ -39,6 +43,10 @@ _G.FlySpeed = 50
 _G.SpinbotEnabled = false
 _G.SpinSpeed = 50
 _G.GodMode = false
+_G.BtoolsEnabled = false
+_G.CrashGunActive = false
+_G.KickGunActive = false
+_G.InfiniteYieldActive = false
 
 local Themes = {
     TerminalGreen = {
@@ -81,7 +89,7 @@ local currentHue = 0
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpectzHub"
+ScreenGui.Name = "SpectzHubOmniMasterV3"
 ScreenGui.ResetOnSpawn = false
 local success = pcall(function() ScreenGui.Parent = CoreGui end)
 if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
@@ -360,10 +368,13 @@ RegisterText(CloseBtn)
 
 MakeDraggable(MainFrame, MainTopBar)
 
-local Sidebar = Instance.new("Frame", MainFrame)
+local Sidebar = Instance.new("ScrollingFrame", MainFrame)
 Sidebar.Size = UDim2.new(0, 140, 1, -38)
 Sidebar.Position = UDim2.new(0, 0, 0, 38)
 Sidebar.BackgroundColor3 = CurrentTheme.SidebarBG
+Sidebar.ScrollBarThickness = 2
+Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
 Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 12)
 local SidebarLayout = Instance.new("UIListLayout", Sidebar)
 SidebarLayout.Padding = UDim.new(0, 6)
@@ -823,7 +834,150 @@ WorldTab:AddButton("Clear Unanchored Parts", function()
     Notify("WORLD", "Cleared " .. count .. " unanchored parts")
 end)
 
--- 5. FONTS
+-- 5. TROLL / EXPLOIT (Kick Gun & Crash Gun added here!)
+local TrollTab = UI:CreateTab("Troll / Fun")
+TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state)
+    _G.KickGunActive = state
+    if state then
+        local tool = Instance.new("Tool")
+        tool.Name = "Spectz_KickGun"
+        tool.RequiresHandle = true
+        local handle = Instance.new("Part", tool)
+        handle.Name = "Handle"
+        handle.Size = Vector3.new(1, 1, 4)
+        handle.BrickColor = BrickColor.new("Really red")
+        tool.Activated:Connect(function()
+            if Mouse.Target and Mouse.Target.Parent then
+                local character = Mouse.Target.Parent
+                local player = Players:GetPlayerFromCharacter(character)
+                if player and player ~= LocalPlayer then
+                    pcall(function()
+                        -- Kick mechanism via infinite loop or state breaking
+                        player.Character:BreakJoints()
+                    end)
+                    Notify("TROLL", "Kicked / Terminated " .. player.Name)
+                end
+            end
+        end)
+        tool.Parent = LocalPlayer.Backpack
+        Notify("TROLL", "Kick Gun added to inventory!")
+    end
+end)
+
+TrollTab:AddToggle("Crash Gun (Equip tool & click player)", false, function(state)
+    _G.CrashGunActive = state
+    if state then
+        local tool = Instance.new("Tool")
+        tool.Name = "Spectz_CrashGun"
+        tool.RequiresHandle = true
+        local handle = Instance.new("Part", tool)
+        handle.Name = "Handle"
+        handle.Size = Vector3.new(1, 1, 4)
+        handle.BrickColor = BrickColor.new("Cyan")
+        tool.Activated:Connect(function()
+            if Mouse.Target and Mouse.Target.Parent then
+                local character = Mouse.Target.Parent
+                local player = Players:GetPlayerFromCharacter(character)
+                if player and player ~= LocalPlayer then
+                    task.spawn(function()
+                        for i = 1, 1500 do
+                            pcall(function()
+                                local p = Instance.new("Part", workspace)
+                                p.Position = player.Character.HumanoidRootPart.Position
+                            end)
+                        end
+                    end)
+                    Notify("TROLL", "Crash Gun fired at " .. player.Name)
+                end
+            end
+        end)
+        tool.Parent = LocalPlayer.Backpack
+        Notify("TROLL", "Crash Gun added to inventory!")
+    end
+end)
+
+TrollTab:AddButton("Jumpscare All Players", function()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.PlayerGui then
+            pcall(function()
+                local sGui = Instance.new("ScreenGui", p.PlayerGui)
+                local img = Instance.new("ImageLabel", sGui)
+                img.Size = UDim2.new(1, 0, 1, 0)
+                img.Image = "rbxassetid://156891041"
+                task.delay(2, function() sGui:Destroy() end)
+            end)
+        end
+    end
+    Notify("TROLL", "Jumpscared server!")
+end)
+
+TrollTab:AddButton("Fling Random Player", function()
+    local players = Players:GetPlayers()
+    table.remove(players, table.find(players, LocalPlayer))
+    if #players > 0 then
+        local target = players[math.random(1, #players)]
+        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = target.Character.HumanoidRootPart
+            hrp.Velocity = Vector3.new(0, 99999, 0)
+            Notify("TROLL", "Flung " .. target.Name)
+        end
+    end
+end)
+
+-- 6. SERVER / ADMIN
+local ServerTab = UI:CreateTab("Server / Admin")
+ServerTab:AddButton("Execute Infinite Yield", function()
+    pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
+    end)
+    Notify("ADMIN", "Infinite Yield Loaded!")
+end)
+
+ServerTab:AddToggle("BTools (Building Tools)", false, function(state)
+    _G.BtoolsEnabled = state
+    if state then
+        local h1 = Instance.new("HopperBin", LocalPlayer.Backpack)
+        h1.BinType = Enum.BinType.Hammer
+        local h2 = Instance.new("HopperBin", LocalPlayer.Backpack)
+        h2.BinType = Enum.BinType.Clone
+        local h3 = Instance.new("HopperBin", LocalPlayer.Backpack)
+        h3.BinType = Enum.BinType.Grab
+        Notify("ADMIN", "BTools Enabled")
+    else
+        for _, v in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if v:IsA("HopperBin") then v:Destroy() end
+        end
+        Notify("ADMIN", "BTools Disabled")
+    end
+end)
+
+ServerTab:AddButton("Low Gravity Server (Moon)", function()
+    workspace.Gravity = 30
+    Notify("ADMIN", "Gravity set to 30")
+end)
+
+ServerTab:AddButton("Normal Gravity Server", function()
+    workspace.Gravity = 196.2
+    Notify("ADMIN", "Gravity reset to normal")
+end)
+
+ServerTab:AddButton("Rejoin Server", function()
+    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+
+ServerTab:AddButton("Server Hop (Find New Server)", function()
+    pcall(function()
+        local Servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+        for _, s in pairs(Servers.data) do
+            if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                break
+            end
+        end
+    end)
+end)
+
+-- 7. FONTS
 local FontsTab = UI:CreateTab("Fonts")
 FontsTab:AddButton("Source Sans Bold (Default)", function() SetGlobalFont(Enum.Font.SourceSansBold) Notify("FONTS", "Applied Source Sans Bold") end)
 FontsTab:AddButton("Code / Monospace", function() SetGlobalFont(Enum.Font.Code) Notify("FONTS", "Applied Code Font") end)
@@ -832,7 +986,7 @@ FontsTab:AddButton("Gothic / Medieval", function() SetGlobalFont(Enum.Font.Gothi
 FontsTab:AddButton("SciFi / Futuristic", function() SetGlobalFont(Enum.Font.SciFi) Notify("FONTS", "Applied SciFi Font") end)
 FontsTab:AddButton("Fredoka One / Rounded", function() SetGlobalFont(Enum.Font.FredokaOne) Notify("FONTS", "Applied Fredoka One") end)
 
--- 6. TELEPORTS
+-- 8. TELEPORTS
 local TeleportTab = UI:CreateTab("Teleports")
 TeleportTab:AddButton("Teleport to Spawn", function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -859,7 +1013,7 @@ TeleportTab:AddButton("Teleport to Random Player", function()
     end
 end)
 
--- 7. THEMES
+-- 9. THEMES
 local ThemesTab = UI:CreateTab("Themes")
 ThemesTab:AddToggle("Rainbow Dynamic Style", CONFIG.RAINBOW_ENABLED, function(state)
     CONFIG.RAINBOW_ENABLED = state
@@ -886,7 +1040,7 @@ ThemesTab:AddButton("Preset: Deep Crimson", function()
     Notify("THEMES", "Applied Deep Crimson")
 end)
 
--- 8. SETTINGS
+-- 10. SETTINGS
 local SettingsTab = UI:CreateTab("Settings")
 SettingsTab:AddKeybind("Toggle UI Keybind", CONFIG.TOGGLE_KEY, function(key)
     CONFIG.TOGGLE_KEY = key
@@ -910,9 +1064,6 @@ end)
 SettingsTab:AddButton("Force Save Settings", function()
     SaveSettings()
     Notify("SYSTEM", "Settings saved to JSON")
-end)
-SettingsTab:AddButton("Rejoin Server", function()
-    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
 end)
 SettingsTab:AddButton("Unload Spectz Hub", function()
     _G.AimbotEnabled = false
