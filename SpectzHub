@@ -1,0 +1,932 @@
+
+
+local UserInputService = game:GetService("UserInputService")
+local TweenService    = game:GetService("TweenService")
+local RunService      = game:GetService("RunService")
+local Lighting        = game:GetService("Lighting")
+local Players         = game:GetService("Players")
+local HttpService     = game:GetService("HttpService")
+local CoreGui         = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+-- Configuration & State
+local CONFIG = {
+    VERIFY_KEY = "SpectzHub26",
+    TOGGLE_KEY = Enum.KeyCode.RightControl,
+    CLICK_TP_KEY = Enum.KeyCode.LeftControl,
+    RAINBOW_ENABLED = false,
+    RAINBOW_SPEED = 0.3,
+    CURRENT_FONT = Enum.Font.SourceSansBold, -- Default bold font for everything
+    IS_AUTHENTICATED = false,
+    SETTING_FILE = "SpectzHub_Settings_v2.json"
+}
+
+-- Global Mod States
+_G.AimbotEnabled = false
+_G.AimbotKey = Enum.UserInputType.MouseButton2
+_G.FOVSize = 150
+_G.ShowFOV = false
+_G.ESPEnabled = false
+_G.NameESP = false
+_G.Noclip = false
+_G.InfJump = false
+_G.DayLoop = false
+_G.FlyEnabled = false
+_G.FlySpeed = 50
+_G.SpinbotEnabled = false
+_G.SpinSpeed = 50
+_G.GodMode = false
+
+local Themes = {
+    TerminalGreen = {
+        MainBG      = Color3.fromRGB(12, 16, 14),
+        SidebarBG   = Color3.fromRGB(16, 22, 18),
+        HeaderBG    = Color3.fromRGB(20, 28, 22),
+        ContainerBG = Color3.fromRGB(22, 32, 26),
+        Accent      = Color3.fromRGB(0, 255, 128),
+        Text        = Color3.fromRGB(220, 255, 230),
+        SubText     = Color3.fromRGB(100, 180, 130),
+        Border      = Color3.fromRGB(0, 180, 90)
+    },
+    CyberPurple = {
+        MainBG      = Color3.fromRGB(18, 12, 26),
+        SidebarBG   = Color3.fromRGB(22, 16, 32),
+        HeaderBG    = Color3.fromRGB(28, 20, 40),
+        ContainerBG = Color3.fromRGB(32, 22, 46),
+        Accent      = Color3.fromRGB(180, 70, 255),
+        Text        = Color3.fromRGB(240, 220, 255),
+        SubText     = Color3.fromRGB(160, 120, 190),
+        Border      = Color3.fromRGB(140, 50, 210)
+    },
+    DeepCrimson = {
+        MainBG      = Color3.fromRGB(22, 12, 12),
+        SidebarBG   = Color3.fromRGB(28, 14, 14),
+        HeaderBG    = Color3.fromRGB(36, 18, 18),
+        ContainerBG = Color3.fromRGB(42, 20, 20),
+        Accent      = Color3.fromRGB(255, 60, 60),
+        Text        = Color3.fromRGB(255, 220, 220),
+        SubText     = Color3.fromRGB(190, 120, 120),
+        Border      = Color3.fromRGB(200, 40, 40)
+    }
+}
+local CurrentTheme = Themes.TerminalGreen
+
+-- UI Tracking Arrays
+local DynamicObjects = {}
+local TextObjects = {}
+local currentHue = 0
+
+-- ScreenGui Setup
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SpectzHub"
+ScreenGui.ResetOnSpawn = false
+local success = pcall(function() ScreenGui.Parent = CoreGui end)
+if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- Dynamic Rainbow Renderer
+RunService.RenderStepped:Connect(function(dt)
+    if CONFIG.RAINBOW_ENABLED then
+        currentHue = (currentHue + (CONFIG.RAINBOW_SPEED * dt)) % 1
+        local rainbowColor = Color3.fromHSV(currentHue, 0.8, 1)
+        for _, obj in ipairs(DynamicObjects) do
+            if obj:IsA("UIStroke") then
+                obj.Color = rainbowColor
+            elseif obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                obj.TextColor3 = rainbowColor
+            else
+                obj.BackgroundColor3 = rainbowColor
+            end
+        end
+    end
+end)
+
+local function RegisterDynamic(obj) table.insert(DynamicObjects, obj) end
+local function RegisterText(obj)
+    table.insert(TextObjects, obj)
+    obj.Font = CONFIG.CURRENT_FONT
+end
+
+local function SetGlobalFont(font)
+    CONFIG.CURRENT_FONT = font
+    for _, obj in ipairs(TextObjects) do
+        if obj and obj.Parent then obj.Font = font end
+    end
+end
+
+-- Draggable Logic Utility
+local function MakeDraggable(frame, handle)
+    local dragging, dragInput, dragStart, startPos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- Persistent Settings
+local function SaveSettings()
+    if writefile then
+        local data = {
+            RainbowEnabled = CONFIG.RAINBOW_ENABLED,
+            RainbowSpeed = CONFIG.RAINBOW_SPEED,
+            ToggleKey = CONFIG.TOGGLE_KEY.Name,
+            ClickTPKey = CONFIG.CLICK_TP_KEY.Name,
+            FontName = tostring(CONFIG.CURRENT_FONT.Name)
+        }
+        pcall(function() writefile(CONFIG.SETTING_FILE, HttpService:JSONEncode(data)) end)
+    end
+end
+
+local function LoadSettings()
+    if readfile and isfile and isfile(CONFIG.SETTING_FILE) then
+        pcall(function()
+            local raw = readfile(CONFIG.SETTING_FILE)
+            local data = HttpService:JSONDecode(raw)
+            if data.RainbowEnabled ~= nil then CONFIG.RAINBOW_ENABLED = data.RainbowEnabled end
+            if data.RainbowSpeed then CONFIG.RAINBOW_SPEED = data.RainbowSpeed end
+            if data.ToggleKey and Enum.KeyCode[data.ToggleKey] then CONFIG.TOGGLE_KEY = Enum.KeyCode[data.ToggleKey] end
+            if data.ClickTPKey and Enum.KeyCode[data.ClickTPKey] then CONFIG.CLICK_TP_KEY = Enum.KeyCode[data.ClickTPKey] end
+            if data.FontName and Enum.Font[data.FontName] then SetGlobalFont(Enum.Font[data.FontName]) end
+        end)
+    end
+end
+
+-- Notification System
+local NotifHolder = Instance.new("Frame")
+NotifHolder.Size = UDim2.new(0, 260, 1, -20)
+NotifHolder.Position = UDim2.new(1, -270, 0, 10)
+NotifHolder.BackgroundTransparency = 1
+NotifHolder.Parent = ScreenGui
+local NotifList = Instance.new("UIListLayout")
+NotifList.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifList.Padding = UDim.new(0, 6)
+NotifList.Parent = NotifHolder
+
+local function Notify(title, message)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 0)
+    Frame.BackgroundColor3 = CurrentTheme.ContainerBG
+    Frame.ClipsDescendants = true
+    Frame.Parent = NotifHolder
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 10)
+    local Stroke = Instance.new("UIStroke", Frame)
+    Stroke.Color = CurrentTheme.Border
+    Stroke.Thickness = 1.5
+    RegisterDynamic(Stroke)
+    local TitleLbl = Instance.new("TextLabel", Frame)
+    TitleLbl.Text = "[ " .. string.upper(title) .. " ]"
+    TitleLbl.Size = UDim2.new(1, -10, 0, 18)
+    TitleLbl.Position = UDim2.new(0, 10, 0, 4)
+    TitleLbl.TextColor3 = CurrentTheme.Accent
+    TitleLbl.TextSize = 13
+    TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLbl.BackgroundTransparency = 1
+    RegisterText(TitleLbl)
+    local MsgLbl = Instance.new("TextLabel", Frame)
+    MsgLbl.Text = message
+    MsgLbl.Size = UDim2.new(1, -10, 0, 18)
+    MsgLbl.Position = UDim2.new(0, 10, 0, 22)
+    MsgLbl.TextColor3 = CurrentTheme.Text
+    MsgLbl.TextSize = 12
+    MsgLbl.TextXAlignment = Enum.TextXAlignment.Left
+    MsgLbl.BackgroundTransparency = 1
+    RegisterText(MsgLbl)
+    TweenService:Create(Frame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 0, 48)}):Play()
+    task.delay(3, function()
+        local close = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(1, 0, 0, 0)})
+        close:Play()
+        close.Completed:Connect(function() Frame:Destroy() end)
+    end)
+end
+
+-- Floating Galaxy Circle Toggle Button
+local GalaxyBtn = Instance.new("TextButton")
+GalaxyBtn.Name = "GalaxyToggle"
+GalaxyBtn.Size = UDim2.new(0, 50, 0, 50)
+GalaxyBtn.Position = UDim2.new(1, -70, 0.5, -25)
+GalaxyBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 100)
+GalaxyBtn.Text = "★"
+GalaxyBtn.TextColor3 = Color3.fromRGB(220, 180, 255)
+GalaxyBtn.TextSize = 24
+GalaxyBtn.Visible = false
+GalaxyBtn.Parent = ScreenGui
+RegisterText(GalaxyBtn)
+
+local GalaxyCorner = Instance.new("UICorner")
+GalaxyCorner.CornerRadius = UDim.new(1, 0)
+GalaxyCorner.Parent = GalaxyBtn
+
+local GalaxyStroke = Instance.new("UIStroke")
+GalaxyStroke.Color = Color3.fromRGB(170, 80, 255)
+GalaxyStroke.Thickness = 2.5
+GalaxyStroke.Parent = GalaxyBtn
+
+local GalaxyGradient = Instance.new("UIGradient")
+GalaxyGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 30, 200)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(50, 10, 90)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 5, 30))
+}
+GalaxyGradient.Rotation = 45
+GalaxyGradient.Parent = GalaxyBtn
+
+RunService.RenderStepped:Connect(function(dt)
+    if GalaxyBtn.Visible then
+        GalaxyGradient.Rotation = (GalaxyGradient.Rotation + (60 * dt)) % 360
+    end
+end)
+MakeDraggable(GalaxyBtn, GalaxyBtn)
+
+-- Key Verification System
+local KeyFrame = Instance.new("Frame")
+KeyFrame.Size = UDim2.new(0, 340, 0, 190)
+KeyFrame.Position = UDim2.new(0.5, -170, 0.5, -95)
+KeyFrame.BackgroundColor3 = CurrentTheme.MainBG
+KeyFrame.Parent = ScreenGui
+Instance.new("UICorner", KeyFrame).CornerRadius = UDim.new(0, 14)
+
+local KeyStroke = Instance.new("UIStroke")
+KeyStroke.Color = CurrentTheme.Border
+KeyStroke.Thickness = 2
+KeyStroke.Parent = KeyFrame
+RegisterDynamic(KeyStroke)
+
+local KeyTopBar = Instance.new("Frame")
+KeyTopBar.Size = UDim2.new(1, 0, 0, 38)
+KeyTopBar.BackgroundColor3 = CurrentTheme.HeaderBG
+KeyTopBar.Parent = KeyFrame
+Instance.new("UICorner", KeyTopBar).CornerRadius = UDim.new(0, 14)
+
+local KeyTitle = Instance.new("TextLabel")
+KeyTitle.Text = "  spectz.lol"
+KeyTitle.Size = UDim2.new(1, -10, 1, 0)
+KeyTitle.BackgroundTransparency = 1
+KeyTitle.TextColor3 = CurrentTheme.Accent
+KeyTitle.TextSize = 14
+KeyTitle.TextXAlignment = Enum.TextXAlignment.Left
+KeyTitle.Parent = KeyTopBar
+RegisterText(KeyTitle)
+
+local KeyInput = Instance.new("TextBox")
+KeyInput.Size = UDim2.new(0.85, 0, 0, 36)
+KeyInput.Position = UDim2.new(0.075, 0, 0.35, 0)
+KeyInput.BackgroundColor3 = CurrentTheme.ContainerBG
+KeyInput.PlaceholderText = "ENTER KEY..."
+KeyInput.Text = ""
+KeyInput.TextColor3 = CurrentTheme.Text
+KeyInput.TextSize = 13
+KeyInput.Parent = KeyFrame
+Instance.new("UICorner", KeyInput).CornerRadius = UDim.new(0, 10)
+RegisterText(KeyInput)
+
+local KeyVerifyBtn = Instance.new("TextButton")
+KeyVerifyBtn.Size = UDim2.new(0.85, 0, 0, 36)
+KeyVerifyBtn.Position = UDim2.new(0.075, 0, 0.68, 0)
+KeyVerifyBtn.BackgroundColor3 = CurrentTheme.HeaderBG
+KeyVerifyBtn.Text = "AUTHENTICATE"
+KeyVerifyBtn.TextColor3 = CurrentTheme.Accent
+KeyVerifyBtn.TextSize = 14
+KeyVerifyBtn.Parent = KeyFrame
+Instance.new("UICorner", KeyVerifyBtn).CornerRadius = UDim.new(0, 10)
+RegisterText(KeyVerifyBtn)
+
+local BtnStroke = Instance.new("UIStroke")
+BtnStroke.Color = CurrentTheme.Border
+BtnStroke.Thickness = 1.5
+BtnStroke.Parent = KeyVerifyBtn
+MakeDraggable(KeyFrame, KeyTopBar)
+
+-- Base UI Creation
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 0, 0, 0)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.BackgroundColor3 = CurrentTheme.MainBG
+MainFrame.ClipsDescendants = true
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 16)
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = CurrentTheme.Border
+MainStroke.Thickness = 2
+RegisterDynamic(MainStroke)
+
+local MainTopBar = Instance.new("Frame", MainFrame)
+MainTopBar.Size = UDim2.new(1, 0, 0, 38)
+MainTopBar.BackgroundColor3 = CurrentTheme.HeaderBG
+Instance.new("UICorner", MainTopBar).CornerRadius = UDim.new(0, 16)
+local MainTitle = Instance.new("TextLabel", MainTopBar)
+MainTitle.Text = "  spectz.lol"
+MainTitle.Size = UDim2.new(0.6, 0, 1, 0)
+MainTitle.BackgroundTransparency = 1
+MainTitle.TextColor3 = CurrentTheme.Accent
+MainTitle.TextSize = 14
+MainTitle.TextXAlignment = Enum.TextXAlignment.Left
+RegisterText(MainTitle)
+
+local MinimizeBtn = Instance.new("TextButton", MainTopBar)
+MinimizeBtn.Text = "─"
+MinimizeBtn.Size = UDim2.new(0, 35, 1, 0)
+MinimizeBtn.Position = UDim2.new(1, -70, 0, 0)
+MinimizeBtn.BackgroundTransparency = 1
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 200, 80)
+MinimizeBtn.TextSize = 14
+RegisterText(MinimizeBtn)
+
+local CloseBtn = Instance.new("TextButton", MainTopBar)
+CloseBtn.Text = "✕"
+CloseBtn.Size = UDim2.new(0, 35, 1, 0)
+CloseBtn.Position = UDim2.new(1, -35, 0, 0)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.TextColor3 = Color3.fromRGB(255, 75, 75)
+CloseBtn.TextSize = 14
+RegisterText(CloseBtn)
+
+MakeDraggable(MainFrame, MainTopBar)
+
+local Sidebar = Instance.new("Frame", MainFrame)
+Sidebar.Size = UDim2.new(0, 140, 1, -38)
+Sidebar.Position = UDim2.new(0, 0, 0, 38)
+Sidebar.BackgroundColor3 = CurrentTheme.SidebarBG
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 12)
+local SidebarLayout = Instance.new("UIListLayout", Sidebar)
+SidebarLayout.Padding = UDim.new(0, 6)
+SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+local SidebarPad = Instance.new("UIPadding", Sidebar)
+SidebarPad.PaddingTop = UDim.new(0, 10)
+
+local ContentHolder = Instance.new("Frame", MainFrame)
+ContentHolder.Size = UDim2.new(1, -155, 1, -44)
+ContentHolder.Position = UDim2.new(0, 150, 0, 44)
+ContentHolder.BackgroundTransparency = 1
+
+local function ShowMainFrame()
+    MainFrame.Visible = true
+    GalaxyBtn.Visible = false
+    TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 640, 0, 440),
+        Position = UDim2.new(0.5, -320, 0.5, -220)
+    }):Play()
+end
+
+local function CloseWithAnimation(hideToGalaxy)
+    local closeTween = TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0)
+    })
+    closeTween:Play()
+    closeTween.Completed:Connect(function()
+        MainFrame.Visible = false
+        if hideToGalaxy then
+            GalaxyBtn.Visible = true
+            TweenService:Create(GalaxyBtn, TweenInfo.new(0.3, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Size = UDim2.new(0, 50, 0, 50)}):Play()
+            Notify("spectz.lol", "Minimized to Galaxy Circle!")
+        end
+    end)
+end
+
+KeyVerifyBtn.MouseButton1Click:Connect(function()
+    if KeyInput.Text == CONFIG.VERIFY_KEY then
+        CONFIG.IS_AUTHENTICATED = true
+        KeyFrame:Destroy()
+        ShowMainFrame()
+        Notify("SYSTEM", "Authenticated successfully!")
+    else
+        Notify("ERROR", "Invalid Key. Access Denied.")
+    end
+end)
+
+MinimizeBtn.MouseButton1Click:Connect(function() CloseWithAnimation(true) end)
+CloseBtn.MouseButton1Click:Connect(function() CloseWithAnimation(true) end)
+GalaxyBtn.MouseButton1Click:Connect(function()
+    if CONFIG.IS_AUTHENTICATED then ShowMainFrame() end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if not gpe and input.KeyCode == CONFIG.TOGGLE_KEY and CONFIG.IS_AUTHENTICATED then
+        if MainFrame.Visible then CloseWithAnimation(true) else ShowMainFrame() end
+    end
+end)
+
+-- Component Builder
+local UI = {Tabs = {}, IsFirstTab = true}
+function UI:CreateTab(name)
+    local isDefault = UI.IsFirstTab
+    UI.IsFirstTab = false
+
+    local TabBtn = Instance.new("TextButton", Sidebar)
+    TabBtn.Size = UDim2.new(0.9, 0, 0, 28)
+    TabBtn.BackgroundColor3 = isDefault and CurrentTheme.HeaderBG or CurrentTheme.ContainerBG
+    TabBtn.Text = isDefault and ("<b>> " .. name .. "</b>") or ("> " .. name)
+    TabBtn.RichText = true
+    TabBtn.TextColor3 = isDefault and CurrentTheme.Accent or CurrentTheme.SubText
+    TabBtn.TextSize = 12
+    Instance.new("UICorner", TabBtn).CornerRadius = UDim.new(0, 8)
+    RegisterText(TabBtn)
+
+    local TabScroll = Instance.new("ScrollingFrame", ContentHolder)
+    TabScroll.Size = UDim2.new(1, 0, 1, 0)
+    TabScroll.BackgroundTransparency = 1
+    TabScroll.ScrollBarThickness = 3
+    TabScroll.Visible = isDefault
+    TabScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    TabScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    local Layout = Instance.new("UIListLayout", TabScroll)
+    Layout.Padding = UDim.new(0, 8)
+
+    TabBtn.MouseButton1Click:Connect(function()
+        for _, tab in pairs(UI.Tabs) do
+            tab.Scroll.Visible = false
+            tab.Btn.BackgroundColor3 = CurrentTheme.ContainerBG
+            tab.Btn.TextColor3 = CurrentTheme.SubText
+            tab.Btn.Text = "> " .. tab.Name
+        end
+        TabScroll.Visible = true
+        TabBtn.BackgroundColor3 = CurrentTheme.HeaderBG
+        TabBtn.TextColor3 = CurrentTheme.Accent
+        TabBtn.Text = "<b>> " .. name .. "</b>"
+    end)
+    table.insert(UI.Tabs, {Scroll = TabScroll, Btn = TabBtn, Name = name})
+
+    local Elements = {}
+    function Elements:AddButton(text, callback)
+        local Btn = Instance.new("TextButton", TabScroll)
+        Btn.Size = UDim2.new(0.98, 0, 0, 32)
+        Btn.BackgroundColor3 = CurrentTheme.ContainerBG
+        Btn.Text = "  [EXEC] " .. text
+        Btn.TextColor3 = CurrentTheme.Text
+        Btn.TextXAlignment = Enum.TextXAlignment.Left
+        Btn.TextSize = 13
+        Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 8)
+        RegisterText(Btn)
+        Btn.MouseButton1Click:Connect(function() pcall(callback) end)
+    end
+    function Elements:AddToggle(text, default, callback)
+        local state = default or false
+        local Toggle = Instance.new("TextButton", TabScroll)
+        Toggle.Size = UDim2.new(0.98, 0, 0, 32)
+        Toggle.BackgroundColor3 = CurrentTheme.ContainerBG
+        Toggle.Text = "  [" .. (state and "X" or " ") .. "] " .. text
+        Toggle.TextColor3 = state and CurrentTheme.Accent or CurrentTheme.Text
+        Toggle.TextXAlignment = Enum.TextXAlignment.Left
+        Toggle.TextSize = 13
+        Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 8)
+        RegisterText(Toggle)
+        Toggle.MouseButton1Click:Connect(function()
+            state = not state
+            Toggle.Text = "  [" .. (state and "X" or " ") .. "] " .. text
+            Toggle.TextColor3 = state and CurrentTheme.Accent or CurrentTheme.Text
+            pcall(callback, state)
+        end)
+    end
+    function Elements:AddSlider(text, min, max, default, callback)
+        local Frame = Instance.new("Frame", TabScroll)
+        Frame.Size = UDim2.new(0.98, 0, 0, 46)
+        Frame.BackgroundColor3 = CurrentTheme.ContainerBG
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
+        local Label = Instance.new("TextLabel", Frame)
+        Label.Text = "  " .. text .. " :: " .. tostring(default)
+        Label.Size = UDim2.new(1, 0, 0, 22)
+        Label.BackgroundTransparency = 1
+        Label.TextColor3 = CurrentTheme.Text
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.TextSize = 12
+        RegisterText(Label)
+        local Track = Instance.new("Frame", Frame)
+        Track.Size = UDim2.new(0.92, 0, 0, 6)
+        Track.Position = UDim2.new(0.04, 0, 0.65, 0)
+        Track.BackgroundColor3 = CurrentTheme.MainBG
+        Instance.new("UICorner", Track).CornerRadius = UDim.new(0, 4)
+        local Fill = Instance.new("Frame", Track)
+        Fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+        Fill.BackgroundColor3 = CurrentTheme.Accent
+        Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 4)
+        RegisterDynamic(Fill)
+        local sliding = false
+        Track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = true end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = math.clamp((input.Position.X - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
+                local val = math.floor(min + (max - min) * delta)
+                Fill.Size = UDim2.new(delta, 0, 1, 0)
+                Label.Text = "  " .. text .. " :: " .. tostring(val)
+                pcall(callback, val)
+            end
+        end)
+    end
+    function Elements:AddKeybind(text, defaultKey, callback)
+        local Frame = Instance.new("Frame", TabScroll)
+        Frame.Size = UDim2.new(0.98, 0, 0, 36)
+        Frame.BackgroundColor3 = CurrentTheme.ContainerBG
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
+        local Label = Instance.new("TextLabel", Frame)
+        Label.Text = "  " .. text
+        Label.Size = UDim2.new(0.6, 0, 1, 0)
+        Label.BackgroundTransparency = 1
+        Label.TextColor3 = CurrentTheme.Text
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.TextSize = 12
+        RegisterText(Label)
+        local KeyBtn = Instance.new("TextButton", Frame)
+        KeyBtn.Size = UDim2.new(0.35, 0, 0.7, 0)
+        KeyBtn.Position = UDim2.new(0.62, 0, 0.15, 0)
+        KeyBtn.BackgroundColor3 = CurrentTheme.HeaderBG
+        KeyBtn.Text = defaultKey.Name
+        KeyBtn.TextColor3 = CurrentTheme.Accent
+        KeyBtn.TextSize = 11
+        Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 6)
+        RegisterText(KeyBtn)
+        local listening = false
+        KeyBtn.MouseButton1Click:Connect(function()
+            listening = true
+            KeyBtn.Text = "PRESS KEY..."
+        end)
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if listening and not gpe and input.UserInputType == Enum.UserInputType.Keyboard then
+                listening = false
+                KeyBtn.Text = input.KeyCode.Name
+                pcall(callback, input.KeyCode)
+            end
+        end)
+    end
+    return Elements
+end
+
+-- FOV Circle
+local FOVCircle
+if Drawing then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Color = Color3.fromRGB(0, 255, 128)
+    FOVCircle.Thickness = 1
+    FOVCircle.NumSides = 64
+    FOVCircle.Radius = _G.FOVSize
+    FOVCircle.Filled = false
+    FOVCircle.Visible = false
+end
+
+local function GetClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = _G.FOVSize
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(v.Character.Head.Position)
+            if onScreen then
+                local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y + 36)).Magnitude
+                if magnitude < shortestDistance then
+                    closestPlayer = v
+                    shortestDistance = magnitude
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+RunService.RenderStepped:Connect(function()
+    if Drawing and FOVCircle then
+        FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
+        FOVCircle.Radius = _G.FOVSize
+        FOVCircle.Visible = _G.ShowFOV
+    end
+
+    if _G.AimbotEnabled and UserInputService:IsMouseButtonPressed(_G.AimbotKey) then
+        local target = GetClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild("Head") then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+        end
+    end
+end)
+
+-- Fly & Spinbot Logic
+RunService.RenderStepped:Connect(function(dt)
+    if _G.FlyEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        local cam = workspace.CurrentCamera
+        local moveDir = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+        hrp.Velocity = moveDir * _G.FlySpeed
+        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
+    end
+
+    if _G.SpinbotEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(_G.SpinSpeed), 0)
+    end
+
+    if _G.GodMode and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.Health = LocalPlayer.Character.Humanoid.MaxHealth
+    end
+end)
+
+-- ESP & Chams Loop
+RunService.RenderStepped:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if _G.ESPEnabled then
+                if not player.Character:FindFirstChild("SpectzHighlight") then
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "SpectzHighlight"
+                    hl.Parent = player.Character
+                    hl.FillColor = Color3.fromRGB(255, 0, 0)
+                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    hl.FillTransparency = 0.5
+                end
+            else
+                if player.Character:FindFirstChild("SpectzHighlight") then
+                    player.Character.SpectzHighlight:Destroy()
+                end
+            end
+            
+            if _G.NameESP and player.Character:FindFirstChild("Head") then
+                if not player.Character.Head:FindFirstChild("SpectzName") then
+                    local bgui = Instance.new("BillboardGui", player.Character.Head)
+                    bgui.Name = "SpectzName"
+                    bgui.Size = UDim2.new(0, 200, 0, 50)
+                    bgui.ExtentsOffset = Vector3.new(0, 3, 0)
+                    bgui.AlwaysOnTop = true
+                    local lbl = Instance.new("TextLabel", bgui)
+                    lbl.Size = UDim2.new(1, 0, 1, 0)
+                    lbl.BackgroundTransparency = 1
+                    lbl.Text = player.Name
+                    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    lbl.TextStrokeTransparency = 0
+                    lbl.Font = CONFIG.CURRENT_FONT
+                    lbl.TextSize = 14
+                end
+            else
+                if player.Character:FindFirstChild("Head") and player.Character.Head:FindFirstChild("SpectzName") then
+                    player.Character.Head.SpectzName:Destroy()
+                end
+            end
+        end
+    end
+end)
+
+-- =======================================================
+-- POPULATE TABS & ALL FEATURES
+-- =======================================================
+
+-- 1. COMBAT
+local CombatTab = UI:CreateTab("Combat")
+CombatTab:AddToggle("Enable Aimbot (Hold Right Click)", false, function(s) _G.AimbotEnabled = s Notify("COMBAT", "Aimbot: " .. tostring(s)) end)
+CombatTab:AddToggle("Show FOV Circle", false, function(s) _G.ShowFOV = s end)
+CombatTab:AddSlider("FOV Radius", 10, 600, 150, function(val) _G.FOVSize = val end)
+CombatTab:AddSlider("Hitbox Expander", 1, 50, 2, function(val)
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.Size = Vector3.new(val, val, val)
+            player.Character.HumanoidRootPart.Transparency = 0.6
+            player.Character.HumanoidRootPart.CanCollide = false
+        end
+    end
+end)
+CombatTab:AddButton("Reset Hitboxes", function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.Size = Vector3.new(2, 2, 1)
+            player.Character.HumanoidRootPart.Transparency = 1
+        end
+    end
+end)
+
+-- 2. VISUALS
+local VisualsTab = UI:CreateTab("Visuals")
+VisualsTab:AddToggle("Chams / ESP Highlights", false, function(s) _G.ESPEnabled = s end)
+VisualsTab:AddToggle("Name ESP", false, function(s) _G.NameESP = s end)
+VisualsTab:AddSlider("Field of View (Camera)", 70, 120, 70, function(val) workspace.CurrentCamera.FieldOfView = val end)
+VisualsTab:AddToggle("Fullbright Mode", false, function(s)
+    Lighting.Brightness = s and 2 or 1
+    Lighting.ClockTime = s and 14 or 12
+    Lighting.GlobalShadows = not s
+end)
+
+-- 3. PLAYER
+local PlayerTab = UI:CreateTab("Player")
+PlayerTab:AddSlider("Walk Speed", 16, 500, 16, function(val)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = val end
+end)
+PlayerTab:AddSlider("Jump Power", 50, 500, 50, function(val)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.JumpPower = val end
+end)
+PlayerTab:AddSlider("Hip Height", 0, 50, 0, function(val)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.HipHeight = val end
+end)
+PlayerTab:AddToggle("Infinite Jump", false, function(s) _G.InfJump = s end)
+UserInputService.JumpRequest:Connect(function()
+    if _G.InfJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+    end
+end)
+PlayerTab:AddToggle("God Mode", false, function(s) _G.GodMode = s Notify("PLAYER", "God Mode: " .. tostring(s)) end)
+PlayerTab:AddToggle("Flight", false, function(s) _G.FlyEnabled = s Notify("PLAYER", "Flight: " .. tostring(s)) end)
+PlayerTab:AddSlider("Flight Speed", 10, 300, 50, function(val) _G.FlySpeed = val end)
+PlayerTab:AddToggle("Spinbot", false, function(s) _G.SpinbotEnabled = s end)
+PlayerTab:AddSlider("Spin Speed", 10, 200, 50, function(val) _G.SpinSpeed = val end)
+
+local ClickTP = false
+PlayerTab:AddToggle("Click Teleport (Key + Click)", false, function(state) ClickTP = state end)
+PlayerTab:AddKeybind("Click TP Trigger Key", CONFIG.CLICK_TP_KEY, function(key)
+    CONFIG.CLICK_TP_KEY = key
+    SaveSettings()
+    Notify("PLAYER", "Click TP Key Set to " .. key.Name)
+end)
+Mouse.Button1Down:Connect(function()
+    if ClickTP and UserInputService:IsKeyDown(CONFIG.CLICK_TP_KEY) and Mouse.Hit then
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = Mouse.Hit + Vector3.new(0, 3, 0)
+        end
+    end
+end)
+
+PlayerTab:AddToggle("Noclip", false, function(s) _G.Noclip = s end)
+RunService.Stepped:Connect(function()
+    if _G.Noclip and LocalPlayer.Character then
+        for _, p in pairs(LocalPlayer.Character:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+end)
+PlayerTab:AddSlider("Max Camera Zoom", 128, 2000, 128, function(val) LocalPlayer.CameraMaxZoomDistance = val end)
+PlayerTab:AddButton("Reset / Respawn", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.Health = 0 end
+end)
+
+-- 4. WORLD
+local WorldTab = UI:CreateTab("World")
+WorldTab:AddSlider("World Gravity", 0, 196, 196, function(val) workspace.Gravity = val end)
+WorldTab:AddToggle("Day/Night Loop", false, function(s)
+    _G.DayLoop = s
+    task.spawn(function()
+        while _G.DayLoop do
+            Lighting.ClockTime = (Lighting.ClockTime + 0.05) % 24
+            task.wait(0.1)
+        end
+    end)
+end)
+WorldTab:AddButton("Set Time: Day (14:00)", function() Lighting.ClockTime = 14 end)
+WorldTab:AddButton("Set Time: Night (00:00)", function() Lighting.ClockTime = 0 end)
+WorldTab:AddButton("Remove All Textures (FPS Boost)", function()
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic
+        elseif v:IsA("Texture") or v:IsA("Decal") then v:Destroy() end
+    end
+    Notify("WORLD", "Textures Removed (Plastic Mode)")
+end)
+WorldTab:AddToggle("Unlock All Parts", false, function(s)
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") then v.Locked = not s end
+    end
+    Notify("WORLD", "Unlock All Parts: " .. tostring(s))
+end)
+WorldTab:AddButton("Destroy Baseplate", function()
+    if workspace:FindFirstChild("Baseplate") then workspace.Baseplate:Destroy() Notify("WORLD", "Baseplate Destroyed") end
+end)
+WorldTab:AddToggle("Disable Water Fog", false, function(s)
+    if workspace:FindFirstChildOfClass("Terrain") then
+        workspace.Terrain.WaterWaveSize = s and 0 or 0.15
+        workspace.Terrain.WaterWaveSpeed = s and 0 or 10
+    end
+    Notify("WORLD", "Water Fog Disabled: " .. tostring(s))
+end)
+WorldTab:AddButton("Clear Unanchored Parts", function()
+    local count = 0
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and not v.Anchored and v.Parent ~= LocalPlayer.Character then
+            v:Destroy()
+            count = count + 1
+        end
+    end
+    Notify("WORLD", "Cleared " .. count .. " unanchored parts")
+end)
+
+-- 5. FONTS
+local FontsTab = UI:CreateTab("Fonts")
+FontsTab:AddButton("Source Sans Bold (Default)", function() SetGlobalFont(Enum.Font.SourceSansBold) Notify("FONTS", "Applied Source Sans Bold") end)
+FontsTab:AddButton("Code / Monospace", function() SetGlobalFont(Enum.Font.Code) Notify("FONTS", "Applied Code Font") end)
+FontsTab:AddButton("Arcade / Retro", function() SetGlobalFont(Enum.Font.Arcade) Notify("FONTS", "Applied Arcade Font") end)
+FontsTab:AddButton("Gothic / Medieval", function() SetGlobalFont(Enum.Font.Gothic) Notify("FONTS", "Applied Gothic Font") end)
+FontsTab:AddButton("SciFi / Futuristic", function() SetGlobalFont(Enum.Font.SciFi) Notify("FONTS", "Applied SciFi Font") end)
+FontsTab:AddButton("Fredoka One / Rounded", function() SetGlobalFont(Enum.Font.FredokaOne) Notify("FONTS", "Applied Fredoka One") end)
+
+-- 6. TELEPORTS
+local TeleportTab = UI:CreateTab("Teleports")
+TeleportTab:AddButton("Teleport to Spawn", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
+        if spawn then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = spawn.CFrame + Vector3.new(0, 3, 0)
+            Notify("TELEPORT", "Teleported to Spawn")
+        else
+            Notify("ERROR", "No SpawnLocation found")
+        end
+    end
+end)
+TeleportTab:AddButton("Teleport to Random Player", function()
+    local players = Players:GetPlayers()
+    table.remove(players, table.find(players, LocalPlayer))
+    if #players > 0 then
+        local randTarget = players[math.random(1, #players)]
+        if randTarget.Character and randTarget.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = randTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
+            Notify("TELEPORT", "Teleported to " .. randTarget.Name)
+        end
+    else
+        Notify("ERROR", "No other players found")
+    end
+end)
+
+-- 7. THEMES
+local ThemesTab = UI:CreateTab("Themes")
+ThemesTab:AddToggle("Rainbow Dynamic Style", CONFIG.RAINBOW_ENABLED, function(state)
+    CONFIG.RAINBOW_ENABLED = state
+    SaveSettings()
+    Notify("THEMES", "Rainbow Theme: " .. (state and "ENABLED" or "DISABLED"))
+end)
+ThemesTab:AddSlider("Rainbow Speed", 1, 10, math.floor(CONFIG.RAINBOW_SPEED * 10), function(val)
+    CONFIG.RAINBOW_SPEED = val / 10
+    SaveSettings()
+end)
+ThemesTab:AddButton("Preset: Terminal Green", function()
+    CONFIG.RAINBOW_ENABLED = false
+    CurrentTheme = Themes.TerminalGreen
+    Notify("THEMES", "Applied Terminal Green")
+end)
+ThemesTab:AddButton("Preset: Cyber Purple", function()
+    CONFIG.RAINBOW_ENABLED = false
+    CurrentTheme = Themes.CyberPurple
+    Notify("THEMES", "Applied Cyber Purple")
+end)
+ThemesTab:AddButton("Preset: Deep Crimson", function()
+    CONFIG.RAINBOW_ENABLED = false
+    CurrentTheme = Themes.DeepCrimson
+    Notify("THEMES", "Applied Deep Crimson")
+end)
+
+-- 8. SETTINGS
+local SettingsTab = UI:CreateTab("Settings")
+SettingsTab:AddKeybind("Toggle UI Keybind", CONFIG.TOGGLE_KEY, function(key)
+    CONFIG.TOGGLE_KEY = key
+    SaveSettings()
+    Notify("SETTINGS", "Toggle Key Set to " .. key.Name)
+end)
+SettingsTab:AddButton("Copy Password / Key", function()
+    if setclipboard then
+        setclipboard(CONFIG.VERIFY_KEY)
+        Notify("SETTINGS", "Copied key to clipboard!")
+    else
+        Notify("ERROR", "Clipboard not supported")
+    end
+end)
+SettingsTab:AddButton("Visit Official Hub (spectz.lol)", function()
+    if setclipboard then
+        setclipboard("https://spectz.lol")
+        Notify("INFO", "Link copied to clipboard!")
+    end
+end)
+SettingsTab:AddButton("Force Save Settings", function()
+    SaveSettings()
+    Notify("SYSTEM", "Settings saved to JSON")
+end)
+SettingsTab:AddButton("Rejoin Server", function()
+    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+SettingsTab:AddButton("Unload Spectz Hub", function()
+    _G.AimbotEnabled = false
+    _G.ESPEnabled = false
+    _G.NameESP = false
+    _G.ShowFOV = false
+    _G.FlyEnabled = false
+    _G.SpinbotEnabled = false
+    _G.GodMode = false
+    if Drawing and FOVCircle then FOVCircle:Remove() end
+    ScreenGui:Destroy()
+end)
+
+-- INITIALIZATION
+LoadSettings()
+SetGlobalFont(CONFIG.CURRENT_FONT)
+Notify("spectz.lol", "Ready!")
