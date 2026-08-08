@@ -1,5 +1,5 @@
 -- =======================================================
--- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v4)
+-- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v4.1)
 -- Domain: spectz.lol[cite: 2]
 -- =======================================================
 
@@ -117,12 +117,19 @@ local DynamicObjects = {}
 local TextObjects = {}
 local currentHue = 0
 
--- ScreenGui Setup
+-- ScreenGui Setup with Safe Fallback
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SpectzHubOmniMasterV4"
 ScreenGui.ResetOnSpawn = false
-local success = pcall(function() ScreenGui.Parent = CoreGui end)
-if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local success = pcall(function()
+    ScreenGui.Parent = CoreGui
+end)
+if not success then
+    pcall(function()
+        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end)
+end
 
 -- Dynamic Rainbow Renderer
 RunService.RenderStepped:Connect(function(dt)
@@ -894,7 +901,7 @@ WorldTab:AddToggle("Disable Water Fog", false, function(s)
     Notify("WORLD", "Water Fog Disabled: " .. tostring(s))
 end)
 
--- 5. UTILITY & AUTOMATION (NEW)
+-- 5. UTILITY & AUTOMATION
 local UtilTab = UI:CreateTab("Utility & Auto")
 UtilTab:AddToggle("Auto Proximity Prompt Spammer", false, function(s) _G.AutoPromptActive = s Notify("UTILITY", "Auto Prompt Spammer: " .. tostring(s)) end)
 UtilTab:AddButton("Save Custom Waypoint", function()
@@ -924,7 +931,7 @@ UtilTab:AddToggle("Chat Macro Spammer", false, function(s)
     Notify("UTILITY", "Chat Macro: " .. tostring(s))
 end)
 
--- 6. SPECTATE & PLAYERS (NEW)
+-- 6. SPECTATE & PLAYERS
 local SpecTab = UI:CreateTab("Spectate & Players")
 SpecTab:AddButton("Stop Spectating (Return to Self)", function()
     _G.SpectatingPlayer = nil
@@ -1110,4 +1117,4 @@ end)
 -- INITIALIZATION
 LoadSettings()
 SetGlobalFont(CONFIG.CURRENT_FONT)
-Notify("spectz.lol", "Omni-Master v4 Loaded Successfully!")[cite: 2]
+Notify("spectz.lol", "Omni-Master v4.1 Loaded Successfully!")[cite: 2]
