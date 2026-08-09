@@ -1,6 +1,6 @@
 -- =======================================================
--- SPECTZ HUB (ULTIMATE OMNI-MASTER EDITION v3)
--- Domain: spectz.lol
+-- SPECTZ HUB
+-- Domain: spectz.lol[cite: 1]
 -- =======================================================
 
 local UserInputService = game:GetService("UserInputService")
@@ -31,6 +31,10 @@ local CONFIG = {
 -- Global Mod States
 _G.AimbotEnabled = false
 _G.AimbotKey = Enum.UserInputType.MouseButton2
+_G.AimbotTargetPart = "Head"
+_G.AimbotSmoothing = 1
+_G.AimbotTeamCheck = false
+_G.AimbotWallCheck = false
 _G.FOVSize = 150
 _G.ShowFOV = false
 _G.ESPEnabled = false
@@ -89,7 +93,7 @@ local currentHue = 0
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpectzHubOmniMasterV3"
+ScreenGui.Name = "SpectzHub"
 ScreenGui.ResetOnSpawn = false
 local success = pcall(function() ScreenGui.Parent = CoreGui end)
 if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
@@ -283,7 +287,7 @@ KeyTopBar.Parent = KeyFrame
 Instance.new("UICorner", KeyTopBar).CornerRadius = UDim.new(0, 14)
 
 local KeyTitle = Instance.new("TextLabel")
-KeyTitle.Text = "  spectz.lol"
+KeyTitle.Text = "  spectz.lol"[cite: 1]
 KeyTitle.Size = UDim2.new(1, -10, 1, 0)
 KeyTitle.BackgroundTransparency = 1
 KeyTitle.TextColor3 = CurrentTheme.Accent
@@ -340,7 +344,7 @@ MainTopBar.Size = UDim2.new(1, 0, 0, 38)
 MainTopBar.BackgroundColor3 = CurrentTheme.HeaderBG
 Instance.new("UICorner", MainTopBar).CornerRadius = UDim.new(0, 16)
 local MainTitle = Instance.new("TextLabel", MainTopBar)
-MainTitle.Text = "  spectz.lol"
+MainTitle.Text = "  spectz.lol"[cite: 1]
 MainTitle.Size = UDim2.new(0.6, 0, 1, 0)
 MainTitle.BackgroundTransparency = 1
 MainTitle.TextColor3 = CurrentTheme.Accent
@@ -407,7 +411,7 @@ local function CloseWithAnimation(hideToGalaxy)
         if hideToGalaxy then
             GalaxyBtn.Visible = true
             TweenService:Create(GalaxyBtn, TweenInfo.new(0.3, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Size = UDim2.new(0, 50, 0, 50)}):Play()
-            Notify("spectz.lol", "Minimized to Galaxy Circle!")
+            Notify("spectz.lol", "Minimized to Galaxy Circle!")[cite: 1]
         end
     end)
 end
@@ -546,6 +550,45 @@ function UI:CreateTab(name)
             end
         end)
     end
+    function Elements:AddDropdown(text, options, default, callback)
+        local Frame = Instance.new("Frame", TabScroll)
+        Frame.Size = UDim2.new(0.98, 0, 0, 36)
+        Frame.BackgroundColor3 = CurrentTheme.ContainerBG
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
+        
+        local Label = Instance.new("TextLabel", Frame)
+        Label.Text = "  " .. text .. " : " .. tostring(default)
+        Label.Size = UDim2.new(0.6, 0, 1, 0)
+        Label.BackgroundTransparency = 1
+        Label.TextColor3 = CurrentTheme.Text
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.TextSize = 12
+        RegisterText(Label)
+        
+        local CycleBtn = Instance.new("TextButton", Frame)
+        CycleBtn.Size = UDim2.new(0.35, 0, 0.7, 0)
+        CycleBtn.Position = UDim2.new(0.62, 0, 0.15, 0)
+        CycleBtn.BackgroundColor3 = CurrentTheme.HeaderBG
+        CycleBtn.Text = tostring(default)
+        CycleBtn.TextColor3 = CurrentTheme.Accent
+        CycleBtn.TextSize = 11
+        Instance.new("UICorner", CycleBtn).CornerRadius = UDim.new(0, 6)
+        RegisterText(CycleBtn)
+        
+        local currentIndex = 1
+        for i, opt in ipairs(options) do
+            if opt == default then currentIndex = i break end
+        end
+        
+        CycleBtn.MouseButton1Click:Connect(function()
+            currentIndex = currentIndex + 1
+            if currentIndex > #options then currentIndex = 1 end
+            local selected = options[currentIndex]
+            CycleBtn.Text = tostring(selected)
+            Label.Text = "  " .. text .. " : " .. tostring(selected)
+            pcall(callback, selected)
+        end)
+    end
     function Elements:AddKeybind(text, defaultKey, callback)
         local Frame = Instance.new("Frame", TabScroll)
         Frame.Size = UDim2.new(0.98, 0, 0, 36)
@@ -563,7 +606,7 @@ function UI:CreateTab(name)
         KeyBtn.Size = UDim2.new(0.35, 0, 0.7, 0)
         KeyBtn.Position = UDim2.new(0.62, 0, 0.15, 0)
         KeyBtn.BackgroundColor3 = CurrentTheme.HeaderBG
-        KeyBtn.Text = defaultKey.Name
+        KeyBtn.Text = defaultKey.Name or tostring(defaultKey)
         KeyBtn.TextColor3 = CurrentTheme.Accent
         KeyBtn.TextSize = 11
         Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 6)
@@ -574,10 +617,16 @@ function UI:CreateTab(name)
             KeyBtn.Text = "PRESS KEY..."
         end)
         UserInputService.InputBegan:Connect(function(input, gpe)
-            if listening and not gpe and input.UserInputType == Enum.UserInputType.Keyboard then
-                listening = false
-                KeyBtn.Text = input.KeyCode.Name
-                pcall(callback, input.KeyCode)
+            if listening and not gpe then
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    listening = false
+                    KeyBtn.Text = input.KeyCode.Name
+                    pcall(callback, input.KeyCode)
+                elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
+                    listening = false
+                    KeyBtn.Text = input.UserInputType.Name
+                    pcall(callback, input.UserInputType)
+                end
             end
         end)
     end
@@ -596,17 +645,37 @@ if Drawing then
     FOVCircle.Visible = false
 end
 
+local function IsVisible(targetPart)
+    if not _G.AimbotWallCheck then return true end
+    local origin = Camera.CFrame.Position
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = RaycastParams.FilterType.Blacklist
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    rayParams.IgnoreWater = true
+    local result = workspace:Raycast(origin, targetPart.Position - origin, rayParams)
+    if result then
+        local hitPart = result.Instance
+        return hitPart:IsDescendantOf(targetPart.Parent)
+    end
+    return true
+end
+
 local function GetClosestPlayer()
     local closestPlayer = nil
     local shortestDistance = _G.FOVSize
     for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(v.Character.Head.Position)
-            if onScreen then
-                local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y + 36)).Magnitude
-                if magnitude < shortestDistance then
-                    closestPlayer = v
-                    shortestDistance = magnitude
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(_G.AimbotTargetPart) and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
+            if not _G.AimbotTeamCheck or v.Team ~= LocalPlayer.Team then
+                local targetPart = v.Character[_G.AimbotTargetPart]
+                local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y + 36)).Magnitude
+                    if magnitude < shortestDistance then
+                        if IsVisible(targetPart) then
+                            closestPlayer = v
+                            shortestDistance = magnitude
+                        end
+                    end
                 end
             end
         end
@@ -621,10 +690,25 @@ RunService.RenderStepped:Connect(function()
         FOVCircle.Visible = _G.ShowFOV
     end
 
-    if _G.AimbotEnabled and UserInputService:IsMouseButtonPressed(_G.AimbotKey) then
+    local isAiming = false
+    if typeof(_G.AimbotKey) == "EnumItem" then
+        if _G.AimbotKey.EnumType == Enum.KeyCode then
+            isAiming = UserInputService:IsKeyDown(_G.AimbotKey)
+        elseif _G.AimbotKey.EnumType == Enum.UserInputType then
+            isAiming = UserInputService:IsMouseButtonPressed(_G.AimbotKey)
+        end
+    end
+
+    if _G.AimbotEnabled and isAiming then
         local target = GetClosestPlayer()
-        if target and target.Character and target.Character:FindFirstChild("Head") then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+        if target and target.Character and target.Character:FindFirstChild(_G.AimbotTargetPart) then
+            local targetPart = target.Character[_G.AimbotTargetPart]
+            local goalCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+            if _G.AimbotSmoothing <= 1 then
+                Camera.CFrame = goalCFrame
+            else
+                Camera.CFrame = Camera.CFrame:Lerp(goalCFrame, 1 / _G.AimbotSmoothing)
+            end
         end
     end
 end)
@@ -703,7 +787,23 @@ end)
 
 -- 1. COMBAT
 local CombatTab = UI:CreateTab("Combat")
-CombatTab:AddToggle("Enable Aimbot (Hold Right Click)", false, function(s) _G.AimbotEnabled = s Notify("COMBAT", "Aimbot: " .. tostring(s)) end)
+CombatTab:AddToggle("Enable Aimbot", false, function(s) _G.AimbotEnabled = s Notify("COMBAT", "Aimbot: " .. tostring(s)) end)
+CombatTab:AddKeybind("Aimbot Trigger Key", Enum.UserInputType.MouseButton2, function(key)
+    _G.AimbotKey = key
+    Notify("COMBAT", "Aimbot Key Set")
+end)
+CombatTab:AddDropdown("Target Part", {"Head", "HumanoidRootPart", "UpperTorso"}, "Head", function(v)
+    _G.AimbotTargetPart = v
+end)
+CombatTab:AddSlider("Smoothing", 1, 20, 1, function(val)
+    _G.AimbotSmoothing = val
+end)
+CombatTab:AddToggle("Team Check", false, function(s)
+    _G.AimbotTeamCheck = s
+end)
+CombatTab:AddToggle("Wall Check", false, function(s)
+    _G.AimbotWallCheck = s
+end)
 CombatTab:AddToggle("Show FOV Circle", false, function(s) _G.ShowFOV = s end)
 CombatTab:AddSlider("FOV Radius", 10, 600, 150, function(val) _G.FOVSize = val end)
 CombatTab:AddSlider("Hitbox Expander", 1, 50, 2, function(val)
@@ -763,7 +863,7 @@ PlayerTab:AddToggle("Click Teleport (Key + Click)", false, function(state) Click
 PlayerTab:AddKeybind("Click TP Trigger Key", CONFIG.CLICK_TP_KEY, function(key)
     CONFIG.CLICK_TP_KEY = key
     SaveSettings()
-    Notify("PLAYER", "Click TP Key Set to " .. key.Name)
+    Notify("PLAYER", "Click TP Key Set to " .. tostring(key.Name or key))
 end)
 Mouse.Button1Down:Connect(function()
     if ClickTP and UserInputService:IsKeyDown(CONFIG.CLICK_TP_KEY) and Mouse.Hit then
@@ -834,7 +934,7 @@ WorldTab:AddButton("Clear Unanchored Parts", function()
     Notify("WORLD", "Cleared " .. count .. " unanchored parts")
 end)
 
--- 5. TROLL / EXPLOIT (Kick Gun & Crash Gun added here!)
+-- 5. TROLL / EXPLOIT
 local TrollTab = UI:CreateTab("Troll / Fun")
 TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state)
     _G.KickGunActive = state
@@ -852,7 +952,6 @@ TrollTab:AddToggle("Kick Gun (Equip tool & click player)", false, function(state
                 local player = Players:GetPlayerFromCharacter(character)
                 if player and player ~= LocalPlayer then
                     pcall(function()
-                        -- Kick mechanism via infinite loop or state breaking
                         player.Character:BreakJoints()
                     end)
                     Notify("TROLL", "Kicked / Terminated " .. player.Name)
@@ -1045,7 +1144,7 @@ local SettingsTab = UI:CreateTab("Settings")
 SettingsTab:AddKeybind("Toggle UI Keybind", CONFIG.TOGGLE_KEY, function(key)
     CONFIG.TOGGLE_KEY = key
     SaveSettings()
-    Notify("SETTINGS", "Toggle Key Set to " .. key.Name)
+    Notify("SETTINGS", "Toggle Key Set to " .. tostring(key.Name or key))
 end)
 SettingsTab:AddButton("Copy Password / Key", function()
     if setclipboard then
@@ -1055,9 +1154,9 @@ SettingsTab:AddButton("Copy Password / Key", function()
         Notify("ERROR", "Clipboard not supported")
     end
 end)
-SettingsTab:AddButton("Visit Official Hub (spectz.lol)", function()
+SettingsTab:AddButton("Visit Official Hub (spectz.lol)", function()[cite: 1]
     if setclipboard then
-        setclipboard("https://spectz.lol")
+        setclipboard("https://spectz.lol")[cite: 1]
         Notify("INFO", "Link copied to clipboard!")
     end
 end)
@@ -1080,4 +1179,4 @@ end)
 -- INITIALIZATION
 LoadSettings()
 SetGlobalFont(CONFIG.CURRENT_FONT)
-Notify("spectz.lol", "Ready!")
+Notify("spectz.lol", "Ready!")[cite: 1]
